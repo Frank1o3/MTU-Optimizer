@@ -1,7 +1,7 @@
 {
     "Name": "MTU Optimizer",
     "Description": "Optimize you MTU Value",
-    "icon_url": "https://raw.githubusercontent.com/KloBraticc/PluginsPagePlexity/main/Icons/images.jpg",
+    "icon_url": "https://raw.githubusercontent.com/Frank1o3/MTU-Optimizer/refs/heads/main/image.png",
     "Code": [
         "https://raw.githubusercontent.com/Frank1o3/MTU-Optimizer/refs/heads/main/Optimizer.xaml",
         "https://raw.githubusercontent.com/Frank1o3/MTU-Optimizer/refs/heads/main/Optimizer.cs"
