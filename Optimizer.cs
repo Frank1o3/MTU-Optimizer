@@ -1,76 +1,82 @@
 using System;
-using System.IO;
+using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
-using System.Net.NetworkInformation;
-using System.Threading.Tasks;
 
-
-public class MTUOptimizerLogic
+public class PluginMain
 {
-    public MTUOptimizerLogic(Window window)
+    public PluginMain(Window window)
     {
-        var button = (Button)((Grid)window.Content).FindName("TestMTUButton");
+        var button = (Button)window.FindName("TestButton");
+        var hostBox = (TextBox)window.FindName("HostInput");
+
         if (button != null)
-            button.Click += async (s, e) =>
+        {
+            button.Click += (s, e) =>
             {
-                var result = await FindOptimalMTU();
-                MessageBox.Show($"Optimal MTU: {result.MTU}ms\nLatency: {result.Latency}ms");
+                string host = hostBox?.Text ?? "www.roblox.com";
+
+                int bestMTU = 0;
+                double bestLatency = double.MaxValue;
+
+                for (int mtu = 576; mtu <= 1500; mtu += 10)
+                {
+                    double latency = PingHost(host, mtu, out bool success);
+                    if (success)
+                    {
+                        if (mtu > bestMTU || (mtu == bestMTU && latency < bestLatency))
+                        {
+                            bestMTU = mtu;
+                            bestLatency = latency;
+                        }
+                    }
+                }
+
+                if (bestMTU > 0)
+                    MessageBox.Show($"Best MTU: {bestMTU}\nLatency: {bestLatency} ms");
+                else
+                    MessageBox.Show("Could not find a working MTU.");
             };
+        }
     }
 
-    private async Task<(int MTU, double Latency)> FindOptimalMTU()
+    private double PingHost(string host, int mtu, out bool success)
     {
-        int[] mtuValues = { 576, 1400, 1500 }; // Common MTU sizes
-        string target = "www.roblox.com"; // Test against Roblox server
-        double bestLatency = double.MaxValue;
-        int optimalMTU = 1500;
-
-        foreach (var mtu in mtuValues)
+        success = false;
+        try
         {
-            try
+            ProcessStartInfo psi = new ProcessStartInfo
             {
-                double latency = await TestMTU(target, mtu);
-                if (latency > 0 && latency < bestLatency)
-                {
-                    bestLatency = latency;
-                    optimalMTU = mtu;
-                }
-            }
-            catch
+                FileName = "ping",
+                Arguments = $"-n 1 -f -l {mtu - 28} {host}",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            Process proc = Process.Start(psi);
+            string output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+
+            if (
+                output.Contains("Packet needs to be fragmented")
+                || output.Contains("Request timed out")
+            )
+                return double.MaxValue;
+
+            Match match = Regex.Match(output, @"time[=<](\d+)ms");
+            if (match.Success)
             {
-                continue;
+                success = true;
+                return double.Parse(match.Groups[1].Value);
             }
         }
-
-        return (optimalMTU, bestLatency);
-    }
-
-    private async Task<double> TestMTU(string host, int mtu)
-    {
-        using Ping ping = new Ping();
-        byte[] buffer = new byte[mtu - 28]; // Subtract IP+ICMP headers (20+8)
-        PingOptions options = new PingOptions { DontFragment = true, Ttl = 128 };
-
-        double totalLatency = 0;
-        int successfulPings = 0;
-        for (int i = 0; i < 3; i++)
+        catch
         {
-            try
-            {
-                PingReply reply = await ping.SendPingAsync(host, 1000, buffer, options);
-                if (reply.Status == IPStatus.Success)
-                {
-                    totalLatency += reply.RoundtripTime;
-                    successfulPings++;
-                }
-            }
-            catch
-            {
-                continue;
-            }
+            // ignore
         }
 
-        return successfulPings > 0 ? totalLatency / successfulPings : double.MaxValue;
+        return double.MaxValue;
     }
 }
